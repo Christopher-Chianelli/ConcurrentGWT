@@ -1,0 +1,16 @@
+= Concurrent GWT
+
+== Important Note
+
+THIS IS A WIP ANNOTATION PROCESSOR; A LOT OF THINGS WON'T WORK AND WILL CHANGE
+
+== About
+
+Concurrent GWT is a WIP Java Annotation Processor that convert methods
+annotated with `@ConcurrentMethod` in a class annotated with `@ConcurrentClass`
+to a "cooperative threading compatible" (with explict exit and resume points),
+which allows GWT's Scheduler to schedule long non-incremental tasks that would
+usually hang the browser for a couple of seconds as incremental tasks that
+have a fixed "running time" before it return control to the Scheduler.
+
+
