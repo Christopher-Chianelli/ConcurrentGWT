@@ -1,5 +1,14 @@
 package com.gmail.chianelli.chris.processor;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.lang.model.element.Modifier;
+
+import com.gmail.chianelli.chris.tasks.AbstractTask;
+import com.gmail.chianelli.chris.tasks.Task;
+import com.squareup.javapoet.*;
+import javax.lang.model.element.Modifier;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.ArrayTypeTree;
@@ -54,35 +63,45 @@ import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.tree.WildcardTree;
 
 public class MethodProcessor {
-	StringBuilder method = new StringBuilder();
+	MethodSpec.Builder method;
+	MethodTree methodTree;
+	ClassName className;
+	final String INSTANCE = "__instance__";
 	long gotoPoint = 0;
 
 	public MethodProcessor(String clazz, MethodTree tree) {
-		method.append("public static com.gmail.chianelli.chris.tasks.Task<");
-		method.append(tree.getReturnType());
-		method.append("> ");
-		method.append(tree.getName());
-		method.append("(");
-		method.append(clazz);
-		method.append(" instance,");
+		className = ClassName.bestGuess(clazz);
+		methodTree = tree;
+		method = MethodSpec.methodBuilder(tree.getName().toString());
+		method.addModifiers(Modifier.PUBLIC, Modifier.STATIC);
+		method.returns(ParameterizedTypeName.get(ClassName.get(Task.class), getType(tree.getReturnType()).box()));
+		
+		method.addParameter(className, "__instance", Modifier.FINAL);
 		
 		for (VariableTree parameter : tree.getParameters()) {
-			method.append(getType(parameter.getType()));
-			method.append(" ");
-			method.append(parameter.getName());
-			method.append(",");
+			method.addParameter(getType(parameter.getType()), parameter.getName().toString());
 		}
-		deleteLastChar();
-		method.append(") {\n");
-		method.append("}");
+		
+		method.addCode(processMethod(tree.getBody()));
 	}
 	
-	public String getGeneratedMethod() {
-		return method.toString();
+	public MethodSpec getGeneratedMethod() {
+		return method.build();
 	}
 	
-	public void processBlock(BlockTree block) {
-		for (StatementTree tree : block.getStatements()) {
+	private CodeBlock processMethod(BlockTree methodBody) {
+		CodeBlock.Builder code = CodeBlock.builder();
+		code.add("return new $T() { $T $N = $N; ",
+				ParameterizedTypeName.get(ClassName.get(AbstractTask.class), getType(methodTree.getReturnType()).box()), className, INSTANCE, "__instance");
+		//
+		code.add("public boolean resume() {return true;}");
+		code.add("public $T getReturnValue() {return null;}", getType(methodTree.getReturnType()).box());
+		code.add("};");
+		return code.build();
+	}
+	
+	public void processBlock(BlockTree blockTree) {
+		for (StatementTree tree : blockTree.getStatements()) {
 			processStatement(tree);
 		}
 	}
@@ -176,53 +195,63 @@ public class MethodProcessor {
 		}
 	}
 	
-	public String getType(Tree type) {
+	public TypeName getType(Tree type) {
 		switch(type.getKind()) {
 	case PRIMITIVE_TYPE:
-		PrimitiveTypeTree primitiveType = (PrimitiveTypeTree) type;
-		return primitiveType.getPrimitiveTypeKind().toString().toLowerCase();
+		PrimitiveTypeTree primitiveType = (PrimitiveTypeTree) type;		
+		switch(primitiveType.getPrimitiveTypeKind().toString().toLowerCase()) {
+		case "void":
+			return TypeName.VOID;
+		case "short":
+		    return TypeName.SHORT;
+		case "long":
+			return TypeName.LONG;
+		case "int":
+			return TypeName.INT;
+		case "float":
+			return TypeName.FLOAT;
+		case "double":
+			return TypeName.DOUBLE;
+		case "char":
+			return TypeName.CHAR;
+		case "byte":
+			return TypeName.BYTE;
+		case "boolean":
+			return TypeName.BOOLEAN;
+		}
 		
 	case ARRAY_TYPE:
 		ArrayTypeTree arrayType = (ArrayTypeTree) type;
-		return getType(arrayType.getType()) + "[]";
+		return ArrayTypeName.of(getType(arrayType.getType()));
 		
 	case IDENTIFIER:
 		IdentifierTree nonprimitiveType = (IdentifierTree) type;
-		return nonprimitiveType.getName().toString();
+		return TypeVariableName.get(nonprimitiveType.getName().toString());
 		
 	case PARAMETERIZED_TYPE:
 		ParameterizedTypeTree parameterizedType = (ParameterizedTypeTree) type;
-		StringBuilder out = new StringBuilder(getType(parameterizedType.getType()));
-		out.append("<");
+		List<TypeName> parameters = new ArrayList<>(parameterizedType.getTypeArguments().size());
+		
 		for (Tree typeParameter : parameterizedType.getTypeArguments()) {
-			out.append(getType(typeParameter));
-			out.append(",");
+			parameters.add(getType(typeParameter));
 		}
-		out.deleteCharAt(out.length() - 1);
-		out.append(">");
-		return out.toString();
+		
+		return ParameterizedTypeName.get(ClassName.bestGuess(getType(parameterizedType.getType()).toString()),
+				parameters.toArray(new TypeName[] {}));
 		
 	case UNBOUNDED_WILDCARD:
-		return "?";
+		return WildcardTypeName.subtypeOf(TypeName.OBJECT);
 		
 	case EXTENDS_WILDCARD:
 		WildcardTree extendsWildcard = (WildcardTree) type;
-		return "? extends " + getType(extendsWildcard.getBound());
+		return WildcardTypeName.subtypeOf(getType(extendsWildcard.getBound()));
 		
 	case SUPER_WILDCARD:
 		WildcardTree superWildcard = (WildcardTree) type;
-		return "? super " + getType(superWildcard.getBound());
+		return WildcardTypeName.supertypeOf(getType(superWildcard.getBound()));
 		
 	default:
 		return null;
 	}
-	}
-	
-	private void deleteLastChar() {
-		deleteLast(1);
-	}
-	
-	private void deleteLast(int n) {
-		method.delete(method.length() - n, method.length());
-	}
+    }
 }

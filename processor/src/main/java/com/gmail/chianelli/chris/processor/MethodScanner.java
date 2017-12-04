@@ -14,7 +14,7 @@ import com.sun.source.util.TreePathScanner;
 
 //From https://stackoverflow.com/a/35112616
 public class MethodScanner extends TreePathScanner<List<MethodTree>, Trees> {
-    private List<MethodTree> methodTrees = new ArrayList<>();
+    private List<MethodTree> methodTrees = new ArrayList<MethodTree>();
 
     public MethodTree scan(ExecutableElement methodElement, Trees trees) {
         assert methodElement.getKind() == ElementKind.METHOD;
